@@ -4,22 +4,25 @@ const cookieParser = require("cookie-parser");
 const axios = require("axios");
 const fs = require("fs");
 const path = require("path");
+const simpleGit = require("simple-git");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 // GitHub OAuth Credentials
-const CLIENT_ID = "Ov23limMaL5Q5do2eAa3";
-const CLIENT_SECRET = "46bb29cbc40c5c0d33d190d2bb2a1788d7b7ffb7";
+const CLIENT_ID = process.env.CLIENT_ID;
+const CLIENT_SECRET = process.env.CLIENT_SECRET;
 
 app.use(cookieParser());
 app.use(fileUpload());
 app.use(express.static(__dirname));
 
-
 // GitHub Login
 app.get("/login", (req, res) => {
-  const redirect_uri = `http://localhost:${PORT}/callback`;
+  const redirect_uri = process.env.NODE_ENV === 'production'
+    ? 'https://lucky-v9o4.onrender.com/callback'
+    : `http://localhost:${PORT}/callback`;
+
   res.redirect(
     `https://github.com/login/oauth/authorize?client_id=${CLIENT_ID}&redirect_uri=${redirect_uri}&scope=repo`
   );
@@ -42,7 +45,7 @@ app.get("/callback", async (req, res) => {
     res.cookie("token", token);
     res.redirect("/");
   } catch (error) {
-    console.error("Error during GitHub OAuth:", error);
+    console.error("❌ Error during GitHub OAuth:", error);
     res.status(500).send("Authentication failed");
   }
 });
@@ -57,12 +60,12 @@ app.get("/me", async (req, res) => {
     });
     res.json({ login: userRes.data.login });
   } catch (error) {
-    console.error("Error fetching user info:", error);
+    console.error("❌ Error fetching user info:", error);
     res.json({});
   }
 });
 
-// Handle File Upload
+// Handle File Upload and Deploy
 app.post("/upload", async (req, res) => {
   const token = req.cookies.token;
   if (!token) return res.status(401).send("Unauthorized");
@@ -71,84 +74,65 @@ app.post("/upload", async (req, res) => {
     return res.status(400).send("No files were uploaded.");
   }
 
-  const files = req.files.files; // Uploaded files
+  const files = req.files.files;
   const repoName = `deployhub-${Date.now()}`;
   const repoPath = path.join(__dirname, repoName);
 
   try {
-    // Create a new repository
+    // 1. Create new GitHub repository
     const repoRes = await axios.post(
       "https://api.github.com/user/repos",
       { name: repoName },
       { headers: { Authorization: `token ${token}` } }
     );
 
-    // Save files locally
+    // 2. Save files locally
     fs.mkdirSync(repoPath, { recursive: true });
-    if (Array.isArray(files)) {
-      for (const file of files) {
-        const filePath = path.join(repoPath, file.name);
-        await new Promise((resolve, reject) => {
-          file.mv(filePath, (err) => {
-            if (err) reject(err);
-            else resolve();
-          });
-        });
-      }
-    } else {
-      const filePath = path.join(repoPath, files.name);
+    const saveFile = async (file) => {
+      const filePath = path.join(repoPath, file.name);
       await new Promise((resolve, reject) => {
-        files.mv(filePath, (err) => {
-          if (err) reject(err);
-          else resolve();
-        });
+        file.mv(filePath, (err) => (err ? reject(err) : resolve()));
       });
+    };
+
+    if (Array.isArray(files)) {
+      for (const file of files) await saveFile(file);
+    } else {
+      await saveFile(files);
     }
 
-    // Push files to GitHub
-    const simpleGit = require("simple-git");
+    // 3. Git init, add, commit, push
     const git = simpleGit(repoPath);
-
     await git.init();
-    console.log("Git repository initialized");
-
     await git.checkoutLocalBranch("main");
-    console.log("Branch 'main' created");
-
     await git.addRemote("origin", repoRes.data.clone_url);
-    console.log("Remote added:", repoRes.data.clone_url);
-
     await git.add(".");
-    console.log("Files added to Git");
-
     await git.commit("Initial commit");
-    console.log("Commit created");
-
     await git.push("origin", "main");
-    console.log("Files pushed to GitHub");
 
-    // Enable GitHub Pages
+    // 4. Enable GitHub Pages
     await axios.post(
       `https://api.github.com/repos/${repoRes.data.owner.login}/${repoName}/pages`,
       { source: { branch: "main", path: "/" } },
       { headers: { Authorization: `token ${token}` } }
     );
 
+    // 5. Send GitHub Pages URL
     const pagesUrl = `https://${repoRes.data.owner.login}.github.io/${repoName}/`;
     res.json({ url: pagesUrl });
   } catch (error) {
-    console.error("Error during file upload:", error);
+    console.error("❌ Error during upload:", error);
     res.status(500).send("Failed to upload files");
   } finally {
-    // Clean up local files
+    // 6. Cleanup
     setTimeout(() => {
       try {
         fs.rmSync(repoPath, { recursive: true, force: true });
-        console.log("Temporary files cleaned up");
+        console.log("🧹 Temporary files cleaned up");
       } catch (err) {
-        console.error("Error cleaning up temporary files:", err);
+        console.error("❌ Error cleaning temp files:", err);
       }
-    }, 1000); // Delay cleanup to avoid EBUSY error
+    }, 1000);
   }
 });
 
@@ -158,7 +142,26 @@ app.get("/logout", (req, res) => {
   res.redirect("/");
 });
 
-// Start the server
+// Start Server
 app.listen(PORT, () => {
-  console.log(`✅ DeployHub พร้อมใช้งาน: http://localhost:${PORT}`);
+  console.log(`✅ DeployHub พร้อมใช้งานที่: http://localhost:${PORT}`);
 });
+
+let repoExists = false;
+
+try {
+  await axios.get(`https://api.github.com/repos/${user.login}/${repoName}`, {
+    headers: { Authorization: `token ${token}` },
+  });
+  repoExists = true;
+} catch (e) {
+  repoExists = false;
+}
+
+if (!repoExists) {
+  await axios.post(
+    "https://api.github.com/user/repos",
+    { name: repoName },
+    { headers: { Authorization: `token ${token}` } }
+  );
+}
