@@ -165,3 +165,27 @@ if (!repoExists) {
     { headers: { Authorization: `token ${token}` } }
   );
 }
+(async () => {
+  let repoExists = false;
+
+  try {
+    const user = { login: "your-username" }; // แทนที่ด้วยข้อมูลจริง
+    const token = "your-token"; // แทนที่ด้วย token จริง
+    const repoName = "your-repo-name"; // แทนที่ด้วยชื่อ repo จริง
+
+    await axios.get(`https://api.github.com/repos/${user.login}/${repoName}`, {
+      headers: { Authorization: `token ${token}` },
+    });
+    repoExists = true;
+  } catch (e) {
+    repoExists = false;
+  }
+
+  if (!repoExists) {
+    await axios.post(
+      "https://api.github.com/user/repos",
+      { name: repoName },
+      { headers: { Authorization: `token ${token}` } }
+    );
+  }
+})();
