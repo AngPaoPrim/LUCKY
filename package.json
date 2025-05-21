@@ -1,9 +1,8 @@
 {
   "name": "deployhub-app",
   "version": "1.0.0",
-  "description": "A Node.js application for deploying files to GitHub Pages",
+  "type": "module",
   "main": "server.js",
-  "type": "commonjs",
   "scripts": {
     "start": "node server.js"
   },
@@ -14,11 +13,5 @@
     "express": "^4.21.2",
     "express-fileupload": "^1.5.1",
     "simple-git": "^3.27.0"
-  },
-  "engines": {
-    "node": ">=14.0.0"
-  },
-  "keywords": [],
-  "author": "Your Name",
-  "license": "MIT"
+  }
 }
