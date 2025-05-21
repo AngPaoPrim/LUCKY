@@ -1,9 +1,9 @@
 {
   "name": "deployhub-app",
   "version": "1.0.0",
-  "type": "module",
   "description": "A Node.js application for deploying files to GitHub Pages",
   "main": "server.js",
+  "type": "commonjs",
   "scripts": {
     "start": "node server.js"
   },

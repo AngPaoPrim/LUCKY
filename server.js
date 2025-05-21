@@ -1,15 +1,20 @@
-const express = require("express");
-const fileUpload = require("express-fileupload");
-const cookieParser = require("cookie-parser");
-const axios = require("axios");
-const fs = require("fs");
-const path = require("path");
-const simpleGit = require("simple-git");
+import dotenv from "dotenv";
+dotenv.config();
+import express from "express";
+import fileUpload from "express-fileupload";
+import cookieParser from "cookie-parser";
+import axios from "axios";
+import fs from "fs";
+import path from "path";
+import { fileURLToPath } from "url";
+import simpleGit from "simple-git";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// GitHub OAuth Credentials
 const CLIENT_ID = process.env.CLIENT_ID;
 const CLIENT_SECRET = process.env.CLIENT_SECRET;
 
@@ -79,14 +84,12 @@ app.post("/upload", async (req, res) => {
   const repoPath = path.join(__dirname, repoName);
 
   try {
-    // 1. Create new GitHub repository
     const repoRes = await axios.post(
       "https://api.github.com/user/repos",
       { name: repoName },
       { headers: { Authorization: `token ${token}` } }
     );
 
-    // 2. Save files locally
     fs.mkdirSync(repoPath, { recursive: true });
     const saveFile = async (file) => {
       const filePath = path.join(repoPath, file.name);
@@ -101,7 +104,6 @@ app.post("/upload", async (req, res) => {
       await saveFile(files);
     }
 
-    // 3. Git init, add, commit, push
     const git = simpleGit(repoPath);
     await git.init();
     await git.checkoutLocalBranch("main");
@@ -110,21 +112,18 @@ app.post("/upload", async (req, res) => {
     await git.commit("Initial commit");
     await git.push("origin", "main");
 
-    // 4. Enable GitHub Pages
     await axios.post(
       `https://api.github.com/repos/${repoRes.data.owner.login}/${repoName}/pages`,
       { source: { branch: "main", path: "/" } },
       { headers: { Authorization: `token ${token}` } }
     );
 
-    // 5. Send GitHub Pages URL
     const pagesUrl = `https://${repoRes.data.owner.login}.github.io/${repoName}/`;
     res.json({ url: pagesUrl });
   } catch (error) {
-    console.error("❌ Error during upload:", error);
+    console.error("❌ Error during upload:", error.response?.data || error.message);
     res.status(500).send("Failed to upload files");
   } finally {
-    // 6. Cleanup
     setTimeout(() => {
       try {
         fs.rmSync(repoPath, { recursive: true, force: true });
@@ -142,50 +141,6 @@ app.get("/logout", (req, res) => {
   res.redirect("/");
 });
 
-// Start Server
 app.listen(PORT, () => {
   console.log(`✅ DeployHub พร้อมใช้งานที่: http://localhost:${PORT}`);
 });
-
-let repoExists = false;
-
-try {
-  await axios.get(`https://api.github.com/repos/${user.login}/${repoName}`, {
-    headers: { Authorization: `token ${token}` },
-  });
-  repoExists = true;
-} catch (e) {
-  repoExists = false;
-}
-
-if (!repoExists) {
-  await axios.post(
-    "https://api.github.com/user/repos",
-    { name: repoName },
-    { headers: { Authorization: `token ${token}` } }
-  );
-}
-(async () => {
-  let repoExists = false;
-
-  try {
-    const user = { login: "your-username" }; // แทนที่ด้วยข้อมูลจริง
-    const token = "your-token"; // แทนที่ด้วย token จริง
-    const repoName = "your-repo-name"; // แทนที่ด้วยชื่อ repo จริง
-
-    await axios.get(`https://api.github.com/repos/${user.login}/${repoName}`, {
-      headers: { Authorization: `token ${token}` },
-    });
-    repoExists = true;
-  } catch (e) {
-    repoExists = false;
-  }
-
-  if (!repoExists) {
-    await axios.post(
-      "https://api.github.com/user/repos",
-      { name: repoName },
-      { headers: { Authorization: `token ${token}` } }
-    );
-  }
-})();
